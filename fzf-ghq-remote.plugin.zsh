@@ -36,21 +36,20 @@ ghes_owner="'$ghes_owner'"
 if [ "$mode" = "repo" ]; then
   if command -v gwq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     gwq list -g --json 2>/dev/null \
-      | jq -r ".[] | if .is_main then \"🌳 main\t\" + .branch + \"\t\" + .path else \"🌿 worktree\t\" + .branch + \"\t\" + .path end" 2>/dev/null
+      | jq -r ".[] | if .is_main then \"🌳 main\t\" + .branch + \"\t\" + .path else \"🌿 worktree\t\" + .branch + \"\t\" + .path end" 2>/dev/null || true
   else
-    paste <(ghq list 2>/dev/null) <(ghq list -p 2>/dev/null) \
-      | awk -F"\t" "{print \"🌳 main\t-\t\" \$2}"
+    ghq list -p 2>/dev/null | awk "{print \"🌳 main\t-\t\" \$0}" || true
   fi
   if [ ${#q} -ge 2 ]; then
     if [ -n "$gh_owner" ]; then
       GH_HOST=github.com gh search repos --owner "$gh_owner" "$q" --limit 30 \
         --json fullName,description \
-        -q ".[] | \"🌐 gh.com\t\" + .fullName + \"\t\" + (.description // \"\")" 2>/dev/null
+        -q ".[] | \"🌐 gh.com\t\" + .fullName + \"\t\" + (.description // \"\")" 2>/dev/null || true
     fi
     if [ -n "$ghes_host" ] && [ -n "$ghes_owner" ]; then
       GH_HOST="$ghes_host" gh search repos --owner "$ghes_owner" "$q" --limit 30 \
         --json fullName,description \
-        -q ".[] | \"🌐 ghes\t\" + .fullName + \"\t\" + (.description // \"\")" 2>/dev/null
+        -q ".[] | \"🌐 ghes\t\" + .fullName + \"\t\" + (.description // \"\")" 2>/dev/null || true
     fi
   fi
 else
@@ -58,15 +57,16 @@ else
     if [ -n "$gh_owner" ]; then
       GH_HOST=github.com gh search code --owner "$gh_owner" "$q" --limit 30 \
         --json path,repository \
-        -q ".[] | \"🔎 gh.com\t\" + .repository.nameWithOwner + \"\t\" + .path" 2>/dev/null
+        -q ".[] | \"🔎 gh.com\t\" + .repository.nameWithOwner + \"\t\" + .path" 2>/dev/null || true
     fi
     if [ -n "$ghes_host" ] && [ -n "$ghes_owner" ]; then
       GH_HOST="$ghes_host" gh search code --owner "$ghes_owner" "$q" --limit 30 \
         --json path,repository \
-        -q ".[] | \"🔎 ghes\t\" + .repository.nameWithOwner + \"\t\" + .path" 2>/dev/null
+        -q ".[] | \"🔎 ghes\t\" + .repository.nameWithOwner + \"\t\" + .path" 2>/dev/null || true
     fi
   fi
-fi'
+fi
+:'
   export FZF_GHQ_GEN FZF_GHQ_MODE_FILE
 
   local line type field2 field3 root
