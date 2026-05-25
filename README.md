@@ -2,6 +2,8 @@
 
 A `Ctrl-]` zsh widget that fuzzy-searches across **local ghq main clones + git worktrees + remote (un-cloned) repos on GitHub / GHES**, and toggles into **code-content search** with `Ctrl-T`.
 
+When you launch it from inside a git repo with a web remote, the picker also surfaces a **`🌍 here`** entry at the top — selecting it opens that repo in your browser via `gh browse`.
+
 Selecting a remote repo runs `ghq get` and `cd` into it. Selecting a code-search hit also opens the matched file in `$EDITOR`.
 
 ## Why
@@ -69,6 +71,7 @@ Initial listing is `gwq list -g` (your local main clones **and** worktrees, with
 
 Items are tagged with:
 
+- `🌍 here` — the repo your cwd is in, opens in browser via `gh browse` (only when cwd is inside a git repo with a web remote)
 - `🌳 main` — main ghq clone
 - `🌿 worktree` — additional git worktree (only when gwq is installed)
 - `🌐 gh.com` / `🌐 ghes` — remote repo found via `gh search repos`
@@ -116,6 +119,7 @@ All rows are tab-separated with three fields: `<icon-type>\t<field2>\t<field3>`.
 
 | icon | field 2 | field 3 |
 |---|---|---|
+| 🌍 here | `owner/repo` of current cwd | web URL |
 | 🌳 main / 🌿 worktree | branch | absolute path (used for `cd`) |
 | 🌐 gh.com / 🌐 ghes | `owner/repo` | repo description |
 | 🔎 gh.com / 🔎 ghes | `owner/repo` | file path inside the repo |

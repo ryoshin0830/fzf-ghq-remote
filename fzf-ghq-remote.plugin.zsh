@@ -1,6 +1,7 @@
 # fzf-ghq-remote.plugin.zsh
 #
 # Ctrl-] zsh widget that fuzzy-searches:
+#   - the current repo's web page (if cwd is inside one), via gh browse
 #   - local ghq main clones
 #   - local git worktrees (via gwq, if installed)
 #   - remote (un-cloned) repos on github.com
@@ -28,12 +29,26 @@ function fzf-ghq-remote () {
   local ghes_host="${FZF_GHQ_GHES_HOST:-}"
   local ghes_owner="${FZF_GHQ_GHES_OWNER:-}"
 
+  # Detect "current repo" once at launch so generator/preview can reuse it.
+  local FZF_GHQ_HERE_URL="" FZF_GHQ_HERE_REPO=""
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    FZF_GHQ_HERE_URL=$(gh browse -n 2>/dev/null)
+    if [ -n "$FZF_GHQ_HERE_URL" ]; then
+      FZF_GHQ_HERE_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
+      [ -z "$FZF_GHQ_HERE_REPO" ] && FZF_GHQ_HERE_REPO="here"
+    fi
+  fi
+  export FZF_GHQ_HERE_URL FZF_GHQ_HERE_REPO
+
   FZF_GHQ_GEN='q="$1"
 mode=$(cat "$FZF_GHQ_MODE_FILE" 2>/dev/null || echo repo)
 gh_owner="'$gh_owner'"
 ghes_host="'$ghes_host'"
 ghes_owner="'$ghes_owner'"
 if [ "$mode" = "repo" ]; then
+  if [ -n "$FZF_GHQ_HERE_URL" ]; then
+    printf "🌍 here\t%s\t%s\n" "$FZF_GHQ_HERE_REPO" "$FZF_GHQ_HERE_URL"
+  fi
   if command -v gwq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     gwq list -g --json 2>/dev/null \
       | jq -r ".[] | if .is_main then \"🌳 main\t\" + .branch + \"\t\" + .path else \"🌿 worktree\t\" + .branch + \"\t\" + .path end" 2>/dev/null || true
@@ -80,6 +95,7 @@ fi
         --bind 'ctrl-t:execute-silent([ "$(cat $FZF_GHQ_MODE_FILE)" = repo ] && echo code > $FZF_GHQ_MODE_FILE || echo repo > $FZF_GHQ_MODE_FILE)+transform-prompt(printf "%s> " "$(cat $FZF_GHQ_MODE_FILE)")+clear-query+reload(sh -c "$FZF_GHQ_GEN" _ "")' \
         --preview 'host=github.com; case {1} in *ghes*) host="'$ghes_host'" ;; esac
 case {1} in
+  "🌍 here") gh repo view 2>/dev/null | head -30 ;;
   "🌳 main"|"🌿 worktree") git -C {3} log --oneline -10 2>/dev/null ;;
   "🌐"*) GH_HOST=$host gh repo view {2} 2>/dev/null | head -30 ;;
   "🔎"*) GH_HOST=$host gh api "repos/{2}/contents/{3}" -q .content 2>/dev/null | base64 -d 2>/dev/null | head -60 ;;
@@ -87,7 +103,7 @@ esac' \
         --preview-window='right:55%:wrap'
   )
   rm -f "$FZF_GHQ_MODE_FILE"
-  unset FZF_GHQ_GEN FZF_GHQ_MODE_FILE
+  unset FZF_GHQ_GEN FZF_GHQ_MODE_FILE FZF_GHQ_HERE_URL FZF_GHQ_HERE_REPO
   if [ -z "$line" ]; then
     zle reset-prompt
     return
@@ -97,6 +113,7 @@ esac' \
   field3=$(printf '%s' "$line" | awk -F'\t' '{print $3}')
   root=$(ghq root)
   case "$type" in
+    "🌍 here") BUFFER="gh browse" ;;
     "🌳 main"|"🌿 worktree") BUFFER="cd $field3" ;;
     "🌐 gh.com") BUFFER="ghq get https://github.com/$field2 && cd $root/github.com/$field2" ;;
     "🌐 ghes")   BUFFER="ghq get https://$ghes_host/$field2 && cd $root/$ghes_host/$field2" ;;
