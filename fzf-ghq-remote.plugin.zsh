@@ -1,18 +1,20 @@
 # fzf-ghq-remote.plugin.zsh
 #
-# Ctrl-O zsh widget that fuzzy-searches:
-#   - local repos under ghq root
+# Ctrl-] zsh widget that fuzzy-searches:
+#   - local ghq main clones
+#   - local git worktrees (via gwq, if installed)
 #   - remote (un-cloned) repos on github.com
 #   - remote (un-cloned) repos on a GHES host
 # with Ctrl-T to toggle between repo-name search and code-content search.
 #
 # Requirements: zsh, fzf >= 0.50, gh >= 2.0, ghq, awk
+# Optional:     gwq + jq (for worktree-aware listing)
 #
 # Configuration — set in your ~/.zshrc BEFORE sourcing this file:
 #   FZF_GHQ_GITHUB_OWNER  github.com login or org (e.g. "alice")
 #   FZF_GHQ_GHES_HOST     GHES hostname (e.g. "git.example.com")
 #   FZF_GHQ_GHES_OWNER    GHES owner/org (e.g. "my-org")
-#   FZF_GHQ_KEY           keybind, default '^O'
+#   FZF_GHQ_KEY           keybind, default '^]'
 #
 # Either GITHUB_OWNER or GHES_* can be set; missing ones are skipped.
 
@@ -32,7 +34,13 @@ gh_owner="'$gh_owner'"
 ghes_host="'$ghes_host'"
 ghes_owner="'$ghes_owner'"
 if [ "$mode" = "repo" ]; then
-  ghq list 2>/dev/null | awk "{ print \"📦 local\t\" \$0 \"\t\" }"
+  if command -v gwq >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    gwq list -g --json 2>/dev/null \
+      | jq -r ".[] | if .is_main then \"🌳 main\t\" + .branch + \"\t\" + .path else \"🌿 worktree\t\" + .branch + \"\t\" + .path end" 2>/dev/null
+  else
+    paste <(ghq list 2>/dev/null) <(ghq list -p 2>/dev/null) \
+      | awk -F"\t" "{print \"🌳 main\t-\t\" \$2}"
+  fi
   if [ ${#q} -ge 2 ]; then
     if [ -n "$gh_owner" ]; then
       GH_HOST=github.com gh search repos --owner "$gh_owner" "$q" --limit 30 \
@@ -61,7 +69,7 @@ else
 fi'
   export FZF_GHQ_GEN FZF_GHQ_MODE_FILE
 
-  local line type fullname filepath root
+  local line type field2 field3 root
   line=$(
     sh -c "$FZF_GHQ_GEN" _ "$LBUFFER" \
     | fzf --ansi --prompt="repo> " --delimiter=$'\t' \
@@ -72,7 +80,7 @@ fi'
         --bind 'ctrl-t:execute-silent([ "$(cat $FZF_GHQ_MODE_FILE)" = repo ] && echo code > $FZF_GHQ_MODE_FILE || echo repo > $FZF_GHQ_MODE_FILE)+transform-prompt(printf "%s> " "$(cat $FZF_GHQ_MODE_FILE)")+clear-query+reload(sh -c "$FZF_GHQ_GEN" _ "")' \
         --preview 'host=github.com; case {1} in *ghes*) host="'$ghes_host'" ;; esac
 case {1} in
-  "📦 local") p=$(ghq list -e -p {2} 2>/dev/null); [ -n "$p" ] && git -C "$p" log --oneline -10 2>/dev/null ;;
+  "🌳 main"|"🌿 worktree") git -C {3} log --oneline -10 2>/dev/null ;;
   "🌐"*) GH_HOST=$host gh repo view {2} 2>/dev/null | head -30 ;;
   "🔎"*) GH_HOST=$host gh api "repos/{2}/contents/{3}" -q .content 2>/dev/null | base64 -d 2>/dev/null | head -60 ;;
 esac' \
@@ -85,17 +93,17 @@ esac' \
     return
   fi
   type=$(printf '%s' "$line" | awk -F'\t' '{print $1}')
-  fullname=$(printf '%s' "$line" | awk -F'\t' '{print $2}')
-  filepath=$(printf '%s' "$line" | awk -F'\t' '{print $3}')
+  field2=$(printf '%s' "$line" | awk -F'\t' '{print $2}')
+  field3=$(printf '%s' "$line" | awk -F'\t' '{print $3}')
   root=$(ghq root)
   case "$type" in
-    "📦 local")  BUFFER="cd $(ghq list -e -p "$fullname")" ;;
-    "🌐 gh.com") BUFFER="ghq get https://github.com/$fullname && cd $root/github.com/$fullname" ;;
-    "🌐 ghes")   BUFFER="ghq get https://$ghes_host/$fullname && cd $root/$ghes_host/$fullname" ;;
-    "🔎 gh.com") BUFFER="ghq get https://github.com/$fullname && cd $root/github.com/$fullname && \${EDITOR:-less} $filepath" ;;
-    "🔎 ghes")   BUFFER="ghq get https://$ghes_host/$fullname && cd $root/$ghes_host/$fullname && \${EDITOR:-less} $filepath" ;;
+    "🌳 main"|"🌿 worktree") BUFFER="cd $field3" ;;
+    "🌐 gh.com") BUFFER="ghq get https://github.com/$field2 && cd $root/github.com/$field2" ;;
+    "🌐 ghes")   BUFFER="ghq get https://$ghes_host/$field2 && cd $root/$ghes_host/$field2" ;;
+    "🔎 gh.com") BUFFER="ghq get https://github.com/$field2 && cd $root/github.com/$field2 && \${EDITOR:-less} $field3" ;;
+    "🔎 ghes")   BUFFER="ghq get https://$ghes_host/$field2 && cd $root/$ghes_host/$field2 && \${EDITOR:-less} $field3" ;;
   esac
   zle accept-line
 }
 zle -N fzf-ghq-remote
-bindkey "${FZF_GHQ_KEY:-^O}" fzf-ghq-remote
+bindkey "${FZF_GHQ_KEY:-^]}" fzf-ghq-remote
