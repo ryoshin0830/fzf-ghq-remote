@@ -86,9 +86,9 @@ Press **Ctrl-]** to launch.
 
 | key | action |
 |---|---|
-| type | filter currently-loaded candidates (local main + worktrees + already-fetched remote) |
-| `Tab` | run `gh search repos` with the current query |
-| `Enter` | if any item matches: `cd` (local) or `ghq get && cd` (remote); if 0 matches: run search |
+| type | filter currently-loaded candidates (local main + worktrees, plus remote when net is on) |
+| `Tab` | toggle remote search on/off — prompt shows `repo🌐> ` when on, `repo> ` when off |
+| `Enter` | if any item matches: `cd` (local) or `ghq get && cd` (remote); if 0 matches: flip net on and run search |
 | `Ctrl-T` | switch to code mode |
 | `Esc` | abort |
 
@@ -99,18 +99,18 @@ Items are tagged with:
 - `🌍 here` — the repo your cwd is in, opens in browser via `gh browse` (only when cwd is inside a git repo with a web remote)
 - `🌳 main` — main ghq clone
 - `🌿 worktree` — additional git worktree (only when gwq is installed)
-- `🌐 gh.com` / `🌐 ghes` — remote repo found via `gh search repos`
+- `🌐 gh.com` / `🌐 ghes` — remote repo found via `gh search repos`. **Remote hits that already exist locally are suppressed** so you pick the `🌳` row (= just `cd`) instead of re-`ghq get`-ing.
 
 ### code mode (after Ctrl-T)
 
 | key | action |
 |---|---|
 | type | refine the query |
-| `Tab` | run `gh search code` with the current query |
-| `Enter` | if any item matches: `ghq get && cd && $EDITOR <path>`; if 0 matches: run search |
+| `Tab` | re-fetch with the current query |
+| `Enter` | if any item matches: `cd && $EDITOR <path>` (local) or `ghq get && cd && $EDITOR <path>` (remote); if 0 matches: run search |
 | `Ctrl-T` | back to repo mode |
 
-The preview pane shows the first 60 lines of the matched file (fetched via `gh api repos/.../contents/...`), so you can confirm the hit before cloning.
+The preview pane shows the first 60 lines of the matched file. When the repo is already local, the file is read directly off disk; otherwise it's fetched via `gh api repos/.../contents/...`.
 
 ## Rate limits
 
@@ -119,7 +119,7 @@ GitHub's search API is rate-limited:
 - `gh search repos`: 30 requests / minute / user
 - `gh search code`: 10 requests / minute / user
 
-This widget intentionally avoids live-per-keystroke search — it only fires when you press `Tab`, or `Enter` on an empty result list. Typing alone is free.
+This widget intentionally avoids live-per-keystroke search — it only fires when net is on (toggled by `Tab` in repo mode) or `Enter` on an empty result list. Typing alone is free.
 
 ## Customization
 
@@ -132,22 +132,23 @@ The widget hardcodes a few choices that you can edit in `fzf-ghq-remote.plugin.z
 
 ## How it works
 
-1. The widget writes a tiny shell-script generator to `$FZF_GHQ_GEN`, plus a mode flag file to `$FZF_GHQ_MODE_FILE`.
-2. fzf is launched with an initial run of the generator (local main+worktree only, fast).
-3. `Tab` and the 0-match `Enter` re-run the generator via `reload`, this time including remote results from `gh search repos` or `gh search code`.
+1. The widget writes a small shell-script generator to a temp file (`$FZF_GHQ_GEN_FILE`), a mode flag (`repo`/`code`) to `$FZF_GHQ_MODE_FILE`, a net flag (`off`/`on`) to `$FZF_GHQ_NET_FILE`, and a snapshot of `ghq list` to `$FZF_GHQ_LOCAL_SET_FILE` (used to dedup remote hits against local clones).
+2. fzf is launched with an initial run of the generator (local main+worktree only, fast — net starts off).
+3. `Tab` flips the net flag, updates the prompt (`repo> ` ⇄ `repo🌐> `), and reloads. When net is on and the query is ≥ 2 chars, the generator additionally calls `gh search repos`/`gh search code` and pipes the result through `awk` to drop any row whose `host/owner/repo` is already in the local set.
 4. `Ctrl-T` flips the mode flag, updates the prompt, clears the query, and re-runs the generator with the new mode.
-5. On selection, the widget stuffs the right `cd` / `ghq get && cd` / `$EDITOR` command into `BUFFER` and accepts the line — so you see the command run in your shell history, not hidden inside the widget.
+5. `Enter` on a 0-match list flips net to on and reloads (forced remote search).
+6. On selection, the widget stuffs the right `cd` / `ghq get && cd` / `$EDITOR` command into `BUFFER` and accepts the line — so you see the command run in your shell history, not hidden inside the widget. For `🔎` rows that have a local-path 4th field, `ghq get` is skipped.
 
 ### Row format
 
-All rows are tab-separated with three fields: `<icon-type>\t<field2>\t<field3>`.
+Rows are tab-separated with 3 fields, plus an optional 4th field used by code-search hits whose repo is already local:
 
-| icon | field 2 | field 3 |
-|---|---|---|
-| 🌍 here | `owner/repo` of current cwd | web URL |
-| 🌳 main / 🌿 worktree | branch | absolute path (used for `cd`) |
-| 🌐 gh.com / 🌐 ghes | `owner/repo` | repo description |
-| 🔎 gh.com / 🔎 ghes | `owner/repo` | file path inside the repo |
+| icon | field 2 | field 3 | field 4 (optional) |
+|---|---|---|---|
+| 🌍 here | `owner/repo` of current cwd | web URL | — |
+| 🌳 main / 🌿 worktree | branch | absolute path (used for `cd`) | — |
+| 🌐 gh.com / 🌐 ghes | `owner/repo` | repo description | — (locally-existing repos are suppressed from this group entirely) |
+| 🔎 gh.com / 🔎 ghes | `owner/repo` | file path inside the repo | absolute local path of the repo, if it's already cloned — when present, Enter skips `ghq get` and `cd`s directly |
 
 ## License
 
