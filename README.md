@@ -41,7 +41,9 @@ Clone wherever you like (e.g. with ghq):
 ghq get https://github.com/ryoshin0830/fzf-ghq-remote
 ```
 
-Then in your `~/.zshrc`:
+### Plain zsh
+
+In your `~/.zshrc`:
 
 ```zsh
 # Configure (set at least one host)
@@ -51,6 +53,29 @@ export FZF_GHQ_GHES_OWNER="your-ghes-org"
 # export FZF_GHQ_KEY='^]'   # default
 
 source "$(ghq root)/github.com/ryoshin0830/fzf-ghq-remote/fzf-ghq-remote.plugin.zsh"
+```
+
+### Oh My Zsh
+
+Symlink the cloned repo into `$ZSH_CUSTOM/plugins/` (defaults to `~/.oh-my-zsh/custom/plugins/`):
+
+```sh
+ln -s "$(ghq root)/github.com/ryoshin0830/fzf-ghq-remote" \
+      "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/fzf-ghq-remote"
+```
+
+Then in your `~/.zshrc`, add the plugin name to the `plugins=()` array and export the config **before** `source $ZSH/oh-my-zsh.sh` (because Oh My Zsh sources plugins from inside that line, and `FZF_GHQ_KEY` is read at source time):
+
+```zsh
+plugins=(git fzf-ghq-remote)
+
+# Configure (set at least one host) — must be before oh-my-zsh.sh is sourced
+export FZF_GHQ_GITHUB_OWNER="your-github-login"
+export FZF_GHQ_GHES_HOST="git.example.com"
+export FZF_GHQ_GHES_OWNER="your-ghes-org"
+# export FZF_GHQ_KEY='^]'   # default
+
+source $ZSH/oh-my-zsh.sh
 ```
 
 ## Usage
